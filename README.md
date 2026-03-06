@@ -21,3 +21,7 @@ You know how to get it on Linux.
 
 Then compile by running build.bat/build.sh, I primarily tested this on Arch Linux with DosBox X through Flatpak.
 That's basically it.
+
+### Examples?
+
+Got you. https://github.com/Davilarek/dosoxide_app_example
