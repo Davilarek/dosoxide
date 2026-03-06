@@ -109,6 +109,13 @@ rm_far_jump:
     .word 0x0000
 .section .text32, "ax"
 .code32
+.global STACK_TOP
+STACK_TOP = 0x1FF0000 // 32 MB - 64 KB
+// STACK_TOP = 0x3FF0000 // 64 MB - 64 KB
+// STACK_TOP = 0x7FF0000 // 128 MB - 64 KB
+
+// and now I will try to go wild, 256 mb
+// STACK_TOP = 0xFF00000 // 256 MB - 64 KB WORKS!
 protected_mode_entry:
     mov ax, 0x10
     mov ds, ax
@@ -117,7 +124,7 @@ protected_mode_entry:
     // mov esp, 0xFFF0
     // mov esp, 0x70000
     // mov esp, 0x80000
-    mov esp, 0x7C0000
+    mov esp, STACK_TOP
     mov ax, 0x28
     mov fs, ax
     mov byte ptr fs:[0xB800C], '7'
@@ -285,9 +292,9 @@ to_32bit_pm_back:
     pop ebp
     ret
 
-.section .data
-.align 4096
-.global PAGING_BUFFER
-PAGING_BUFFER: .fill 40960, 1, 0
+// .section .data
+// .align 4096
+// .global PAGING_BUFFER
+// PAGING_BUFFER: .fill 40960, 1, 0
 // PAGING_BUFFER: .fill 81920, 1, 0
 // PAGING_BUFFER: .fill 36864, 1, 0
