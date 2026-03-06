@@ -1,0 +1,4 @@
+/target
+PROGRAM.EXE
+/asm/start_*.s
+/src/main_*.rs
