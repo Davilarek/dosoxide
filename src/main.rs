@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-mod dos;
+pub mod dos;
 use core::arch::asm;
 use core::panic::PanicInfo;
 use core::ptr::addr_of;
@@ -40,142 +40,12 @@ unsafe impl GlobalAlloc for BumpAllocator {
         let aligned = (current + layout.align() - 1) & !(layout.align() - 1);
         let new_end = aligned + layout.size();
 
-        let esp: u32;
-        asm!("mov {}, esp", out(reg) esp);
-
-        dos::dos_print(b"Alloc at: ");
-        print_decimal(aligned as u32);
-        dos::dos_print(b"\tESP: ");
-        print_decimal(esp);
-        dos::dos_print(b"\r\n");
-        let mut slow_down_every_next = false;
-
-        // if aligned >= 42004401 { // after removing PAGING_BUFFER, the OOM happens at 8 MB. But why?
-        // if aligned >= 8118272 { // wait... 8118272 + 4096 (page size) = 8122368
-        // if aligned >= 8118273 { // this address is NOT reachable, but 8118272 is! next alloc would be hitting stack!
-        if false {
-            let eax: u32;
-            let ebx: u32;
-            let ecx: u32;
-            let edx: u32;
-            let esi: u32;
-            let edi: u32;
-            let eflags: u32;
-            asm!(
-                "mov {}, eax",
-                "mov {}, ebx",
-                "mov {}, ecx",
-                "mov {}, edx",
-                "mov {}, esi",
-                "mov {}, edi",
-                "pushf",
-                "pop {}",
-                out(reg) eax,
-                out(reg) ebx,
-                out(reg) ecx,
-                out(reg) edx,
-                out(reg) esi,
-                out(reg) edi,
-                out(reg) eflags,
-            );
-            unsafe {
-                let vga_base = 0xB8000 as *mut u8;
-                let mut msg = [0u8; 200];
-                let mut pos = 0;
-
-                fn advance_and_print_label(label: &[u8], buf: &mut [u8], pos: usize) -> usize {
-                    let mut new_pos = pos;
-                    for &c in label {
-                        buf[new_pos] = c;
-                        new_pos += 1;
-                    }
-                    new_pos
-                }
-
-                fn print_into_buf(value: u32, buf: &mut [u8], pos: usize) -> usize {
-                    let mut new_pos = pos;
-                    new_pos = print_decimal_into_buf(value, buf, new_pos);
-                    buf[new_pos] = b' ';
-                    new_pos + 1
-                }
-
-                pos = advance_and_print_label(b"OOM at: ", &mut msg, pos);
-                pos = print_into_buf(aligned as u32, &mut msg, pos);
-                pos = advance_and_print_label(b"ESP: ", &mut msg, pos);
-                pos = print_into_buf(esp, &mut msg, pos);
-                pos = advance_and_print_label(b"EAX: ", &mut msg, pos);
-                pos = print_into_buf(eax, &mut msg, pos);
-                pos = advance_and_print_label(b"EBX: ", &mut msg, pos);
-                pos = print_into_buf(ebx, &mut msg, pos);
-                pos = advance_and_print_label(b"ECX: ", &mut msg, pos);
-                pos = print_into_buf(ecx, &mut msg, pos);
-                pos = advance_and_print_label(b"EDX: ", &mut msg, pos);
-                pos = print_into_buf(edx, &mut msg, pos);
-                pos = advance_and_print_label(b"ESI: ", &mut msg, pos);
-                pos = print_into_buf(esi, &mut msg, pos);
-                pos = advance_and_print_label(b"EDI: ", &mut msg, pos);
-                pos = print_into_buf(edi, &mut msg, pos);
-                pos = advance_and_print_label(b"EFLAGS: ", &mut msg, pos);
-
-                pos = print_decimal_into_buf(eflags, &mut msg, pos);
-                for (i, &c) in msg.iter().enumerate() {
-                    asm!(
-                        "mov byte ptr fs:[ebx], al",
-                        "mov byte ptr fs:[ebx+1], 0x4F",
-                        in("ebx") vga_base.add(i * 2),
-                        in("al") c,
-                    );
-                }
-            }
-            slow_down_every_next = true;
-        }
-        if slow_down_every_next {
-            for _ in 0..1000000 {
-                asm!("nop");
-            }
-            let msg = b"Slowing down due to OOM...";
-            unsafe {
-                let vga_base = 0xB8000 as *mut u8;
-                for (i, &c) in msg.iter().enumerate() {
-                    asm!(
-                        "mov byte ptr fs:[ebx], al",
-                        "mov byte ptr fs:[ebx+1], 0x4F",
-                        in("ebx") vga_base.add(i * 2).add(100 * 2),
-                        in("al") c,
-                    );
-                }
-            }
-            for _ in 0..1000000 {
-                asm!("nop");
-            }
-            unsafe {
-                let vga_base = 0xB8000 as *mut u8;
-                for i in 0..msg.iter().len() {
-                    asm!(
-                        "mov byte ptr fs:[ebx], al",
-                        "mov byte ptr fs:[ebx+1], 0x4F",
-                        in("ebx") vga_base.add(i * 2).add(100 * 2),
-                        in("al") b' ',
-                    );
-                }
-            }
-            // hlt
-            asm!("hlt");
+        if VERBOSE_ALLOC {
+            dos::dos_print(b"Alloc at: ");
+            print_decimal(aligned as u32);
         }
 
-        // if new_end >= 0x1F00000 {
-        //     return core::ptr::null_mut();
-        // }
-        // if new_end >= (31 * 1024 * 1024) - 0x8230 as usize {
-        //     // 0x8230 = load_base
-        //     // so 0x1F00000 - 0x8230
-        //     // stack is at 0x1FF0000
-        //     // next block would be... 32472528 + 4096 = 32476624 = 0x1EF7DD0 that's fine
-        //     // but if we wanted 32 MB, that would be 32505856 - 0x8230 = 32472528... weird
-        //     // but when I set it to 32 MB, it crashes.
-        //     return core::ptr::null_mut();
-        // }
-        let ceiling = addr_of!(STACK_TOP) as usize; // WORKS!
+        let ceiling = addr_of!(STACK_TOP) as usize;
         if new_end >= ceiling {
             return core::ptr::null_mut();
         }
@@ -212,10 +82,8 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 }
 
 unsafe extern "C" {
-    // static mut PAGING_BUFFER: [u8; 12288];
-    // static mut PAGING_BUFFER: [u8; 40960];
-    // static mut PAGING_BUFFER: [u8; 81920];
     static STACK_TOP: u8;
+    fn user_entry_point() -> !;
 }
 fn print_decimal(mut value: u32) {
     if value == 0 {
@@ -246,6 +114,8 @@ fn panic(_info: &PanicInfo) -> ! {
     }
     loop {}
 }
+
+static VERBOSE_ALLOC: bool = false;
 
 pub fn test_allocator_capacity() {
     use alloc::vec::Vec;
@@ -293,37 +163,6 @@ pub fn test_allocator_capacity() {
     dos::dos_print(b"Memory Freed.\r\n");
 }
 
-pub fn test_allocator_capacity_v1() {
-    // const BLOCK_SIZE: usize = 16 * 1024;
-    const BLOCK_SIZE: usize = 8 * 1024;
-    let mut count: u32 = 0;
-    loop {
-        let layout = core::alloc::Layout::from_size_align(BLOCK_SIZE, 4096).unwrap();
-        let ptr = unsafe { ALLOCATOR.alloc(layout) };
-        if ptr.is_null() {
-            break;
-        }
-        unsafe {
-            core::ptr::write_bytes(ptr, 0, BLOCK_SIZE);
-        }
-        count += 1;
-        unsafe {
-            let vga = 0xB8000usize;
-            let mut n = count;
-            for i in (0..6).rev() {
-                let digit = (n % 10) as u8;
-                n /= 10;
-                core::arch::asm!(
-                    "mov byte ptr fs:[ebx], al",
-                    "mov byte ptr fs:[ebx+1], 0x0E",
-                    in("ebx") vga + (60 + i) * 2,
-                    in("al") b'0' + digit,
-                );
-            }
-        }
-    }
-}
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_main(load_base: u32) -> ! {
     unsafe { setup_paging(load_base) };
@@ -348,7 +187,7 @@ pub unsafe extern "C" fn rust_main(load_base: u32) -> ! {
             "mov byte ptr fs:[0xB8005], 0x0C",
         );
     }
-    dos::dos_print(b"DOS Extender runs off base:");
+    dos::dos_print(b"dosoxide runs off base:");
     print_decimal(load_base);
     dos::dos_print(b".\r\n");
     let mem_kb = unsafe { dos::get_extended_memory_kb() };
@@ -365,16 +204,10 @@ pub unsafe extern "C" fn rust_main(load_base: u32) -> ! {
     print_decimal(*numbers.get(0).unwrap());
     print_decimal(*numbers.get(1).unwrap());
 
-    dos::dos_print(b"Test?\r\n");
-    // print anything 100 times
-    // for i in 0..10000 {
-    //     print_decimal(i);
-    //     dos::dos_print(b"Testing allocator capacity...\r\n");
-    // }
-
     test_allocator_capacity();
 
-    loop {}
+    // loop {}
+    unsafe { user_entry_point() };
 }
 
 unsafe fn setup_paging(load_base: u32) {

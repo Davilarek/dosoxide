@@ -8,5 +8,6 @@ panic = "abort"
 lto = true
 
 [lib]
-crate-type = ["staticlib"]
+# crate-type = ["staticlib"]
+crate-type = ["rlib"]
 path = "src/main.rs"
