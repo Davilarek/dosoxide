@@ -49,17 +49,29 @@ fn print_decimal(mut value: u32) {
     }
     dos::dos_print(&buf[i..]);
 }
+
+use core::fmt::Write;
+/// Nonsensical wrapper around dos::dos_print. Used for panic messages.
+struct SimpleWriterDoNotUse;
+impl core::fmt::Write for SimpleWriterDoNotUse {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        dos::dos_print(s.as_bytes());
+        Ok(())
+    }
+}
+
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    let msg = _info.message().as_str();
-    dos::dos_print(msg.unwrap().as_bytes());
-    let msg2 = b"\r\nPanic occurred at: ";
-    dos::dos_print(msg2);
+    let raw_msg = _info.message();
+    write!(SimpleWriterDoNotUse, "Panic: {}", raw_msg).ok();
     if let Some(location) = _info.location() {
-        let mut buf = [0u8; 140];
+        let msg2 = b"\r\nPanic occurred at: ";
+        let mut buf = [0u8; 240]; // I'm noticing I'm too generous with buffer sizes... our stack is absolutely cooked
         let mut pos = 0;
         pos = util::emplace_str_into_buf(msg2, &mut buf, pos);
-        pos = util::print_decimal_into_buf(location.file().as_ptr() as u32, &mut buf, pos);
+        let file = location.file();
+        util::emplace_str_into_buf(file.as_bytes(), &mut buf, pos);
+        pos += file.len();
         util::emplace_str_into_buf(b":", &mut buf, pos);
         pos += 1;
         pos = util::print_decimal_into_buf(location.line() as u32, &mut buf, pos);
